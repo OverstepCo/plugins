@@ -56,13 +56,8 @@ final class VideoPlayer {
 
   private final VideoPlayerOptions options;
 
-  VideoPlayer(
-      Context context,
-      EventChannel eventChannel,
-      TextureRegistry.SurfaceTextureEntry textureEntry,
-      String dataSource,
-      String formatHint,
-      VideoPlayerOptions options) {
+  VideoPlayer(Context context, EventChannel eventChannel, TextureRegistry.SurfaceTextureEntry textureEntry,
+      String dataSource, String formatHint, VideoPlayerOptions options) {
     this.eventChannel = eventChannel;
     this.textureEntry = textureEntry;
     this.options = options;
@@ -73,13 +68,9 @@ final class VideoPlayer {
 
     DataSource.Factory dataSourceFactory;
     if (isHTTP(uri)) {
-      dataSourceFactory =
-          new DefaultHttpDataSourceFactory(
-              "ExoPlayer",
-              null,
-              DefaultHttpDataSource.DEFAULT_CONNECT_TIMEOUT_MILLIS,
-              DefaultHttpDataSource.DEFAULT_READ_TIMEOUT_MILLIS,
-              true);
+      dataSourceFactory = new DefaultHttpDataSourceFactory("ExoPlayer", null,
+          DefaultHttpDataSource.DEFAULT_CONNECT_TIMEOUT_MILLIS, DefaultHttpDataSource.DEFAULT_READ_TIMEOUT_MILLIS,
+          true);
     } else {
       dataSourceFactory = new DefaultDataSourceFactory(context, "ExoPlayer");
     }
@@ -99,8 +90,8 @@ final class VideoPlayer {
     return scheme.equals("http") || scheme.equals("https");
   }
 
-  private MediaSource buildMediaSource(
-      Uri uri, DataSource.Factory mediaDataSourceFactory, String formatHint, Context context) {
+  private MediaSource buildMediaSource(Uri uri, DataSource.Factory mediaDataSourceFactory, String formatHint,
+      Context context) {
     int type;
     if (formatHint == null) {
       type = Util.inferContentType(uri.getLastPathSegment());
@@ -125,81 +116,92 @@ final class VideoPlayer {
     }
     switch (type) {
       case C.TYPE_SS:
-        return new SsMediaSource.Factory(
-                new DefaultSsChunkSource.Factory(mediaDataSourceFactory),
-                new DefaultDataSourceFactory(context, null, mediaDataSourceFactory))
-            .createMediaSource(MediaItem.fromUri(uri));
+        return new SsMediaSource.Factory(new DefaultSsChunkSource.Factory(mediaDataSourceFactory),
+            new DefaultDataSourceFactory(context, null, mediaDataSourceFactory))
+                .createMediaSource(MediaItem.fromUri(uri));
       case C.TYPE_DASH:
-        return new DashMediaSource.Factory(
-                new DefaultDashChunkSource.Factory(mediaDataSourceFactory),
-                new DefaultDataSourceFactory(context, null, mediaDataSourceFactory))
-            .createMediaSource(MediaItem.fromUri(uri));
+        return new DashMediaSource.Factory(new DefaultDashChunkSource.Factory(mediaDataSourceFactory),
+            new DefaultDataSourceFactory(context, null, mediaDataSourceFactory))
+                .createMediaSource(MediaItem.fromUri(uri));
       case C.TYPE_HLS:
-        return new HlsMediaSource.Factory(mediaDataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(uri));
+        return new HlsMediaSource.Factory(mediaDataSourceFactory).createMediaSource(MediaItem.fromUri(uri));
       case C.TYPE_OTHER:
-        return new ProgressiveMediaSource.Factory(mediaDataSourceFactory)
-            .createMediaSource(MediaItem.fromUri(uri));
-      default:
-        {
-          throw new IllegalStateException("Unsupported type: " + type);
-        }
+        return new ProgressiveMediaSource.Factory(mediaDataSourceFactory).createMediaSource(MediaItem.fromUri(uri));
+      default: {
+        throw new IllegalStateException("Unsupported type: " + type);
+      }
     }
   }
 
-  private void setupVideoPlayer(
-      EventChannel eventChannel, TextureRegistry.SurfaceTextureEntry textureEntry) {
+  private void setupVideoPlayer(EventChannel eventChannel, TextureRegistry.SurfaceTextureEntry textureEntry) {
 
-    eventChannel.setStreamHandler(
-        new EventChannel.StreamHandler() {
-          @Override
-          public void onListen(Object o, EventChannel.EventSink sink) {
-            eventSink.setDelegate(sink);
-          }
+    eventChannel.setStreamHandler(new EventChannel.StreamHandler() {
+      @Override
+      public void onListen(Object o, EventChannel.EventSink sink) {
+        eventSink.setDelegate(sink);
+      }
 
-          @Override
-          public void onCancel(Object o) {
-            eventSink.setDelegate(null);
-          }
-        });
+      @Override
+      public void onCancel(Object o) {
+        eventSink.setDelegate(null);
+      }
+    });
 
     surface = new Surface(textureEntry.surfaceTexture());
     exoPlayer.setVideoSurface(surface);
     setAudioAttributes(exoPlayer, options.mixWithOthers);
 
-    exoPlayer.addListener(
-        new EventListener() {
+    exoPlayer.addListener(new EventListener() {
+      private boolean isBuffering = false;
 
-          @Override
-          public void onPlaybackStateChanged(final int playbackState) {
-            if (playbackState == Player.STATE_BUFFERING) {
-              sendBufferingUpdate();
-            } else if (playbackState == Player.STATE_READY) {
-              if (!isInitialized) {
-                isInitialized = true;
-                sendInitialized();
-              }
-            } else if (playbackState == Player.STATE_ENDED) {
-              Map<String, Object> event = new HashMap<>();
-              event.put("event", "completed");
-              eventSink.success(event);
-            }
-          }
+      public void setBuffering(boolean buffering) {
+        if (isBuffering != buffering || true) {
+          isBuffering = buffering;
+          Map<String, Object> event = new HashMap<>();
+          event.put("event", buffering ? "bufferingStart" : "bufferingEnd");
+          eventSink.success(event);
+        }
+      }
 
-          @Override
-          public void onPlayerError(final ExoPlaybackException error) {
-            if (eventSink != null) {
-              eventSink.error("VideoError", "Video player had error " + error, null);
-            }
+      @Override
+      public void onPlaybackStateChanged(final int playbackState) {
+
+        if (playbackState == Player.STATE_BUFFERING) {
+          setBuffering(true);
+
+          sendBufferingUpdate();
+        } else if (playbackState == Player.STATE_READY) {
+          if (!isInitialized) {
+            isInitialized = true;
+            sendInitialized();
           }
-        });
+        } else if (playbackState == Player.STATE_ENDED) {
+          Map<String, Object> event = new HashMap<>();
+          event.put("event", "completed");
+          eventSink.success(event);
+        }
+
+        if (playbackState != Player.STATE_BUFFERING) {
+          setBuffering(false);
+        }
+      }
+
+      @Override
+      public void onPlayerError(final ExoPlaybackException error) {
+        setBuffering(false);
+        if (eventSink != null) {
+          eventSink.error("VideoError", "Video player had error " + error, null);
+        }
+      }
+    });
   }
 
   void sendBufferingUpdate() {
     Map<String, Object> event = new HashMap<>();
     event.put("event", "bufferingUpdate");
     List<? extends Number> range = Arrays.asList(0, exoPlayer.getBufferedPosition());
-    // iOS supports a list of buffered ranges, so here is a list with a single range.
+    // iOS supports a list of buffered ranges, so here is a list with a single
+    // range.
     event.put("values", Collections.singletonList(range));
     eventSink.success(event);
   }
@@ -207,8 +209,8 @@ final class VideoPlayer {
   @SuppressWarnings("deprecation")
   private static void setAudioAttributes(SimpleExoPlayer exoPlayer, boolean isMixMode) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-      exoPlayer.setAudioAttributes(
-          new AudioAttributes.Builder().setContentType(C.CONTENT_TYPE_MOVIE).build(), !isMixMode);
+      exoPlayer.setAudioAttributes(new AudioAttributes.Builder().setContentType(C.CONTENT_TYPE_MOVIE).build(),
+          !isMixMode);
     } else {
       exoPlayer.setAudioStreamType(C.STREAM_TYPE_MUSIC);
     }
@@ -232,7 +234,8 @@ final class VideoPlayer {
   }
 
   void setPlaybackSpeed(double value) {
-    // We do not need to consider pitch and skipSilence for now as we do not handle them and
+    // We do not need to consider pitch and skipSilence for now as we do not handle
+    // them and
     // therefore never diverge from the default values.
     final PlaybackParameters playbackParameters = new PlaybackParameters(((float) value));
 

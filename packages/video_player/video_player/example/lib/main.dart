@@ -218,12 +218,13 @@ class _BumbleBeeRemoteVideoState extends State<_BumbleBeeRemoteVideo> {
   void initState() {
     super.initState();
     _controller = VideoPlayerController.network(
-      'https://flutter.github.io/assets-for-api-docs/assets/videos/bee.mp4',
+      'https://firebasestorage.googleapis.com/v0/b/a-simple-pause.appspot.com/o/pause_videos%2Fvideoplayback%20(1).webm?alt=media&token=4bc76dd8-9298-45a7-a6d7-73ad5fa9f08c',
       closedCaptionFile: _loadCaptions(),
       videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
     );
 
     _controller.addListener(() {
+      print('buffering: ${_controller.value.isBuffering}');
       setState(() {});
     });
     _controller.setLooping(true);
